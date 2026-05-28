@@ -24,7 +24,7 @@ def main():
 
     # Coluna da imagem
     with col1:
-        st.image("Logo_Pequena.png", width=80)
+        st.image("Logo_Pequena.png", width=160)
 
     # Coluna do título
     with col2:
