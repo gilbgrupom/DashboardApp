@@ -5,7 +5,7 @@ import io
 import os
 import signal
 import sys
-import pyautogui
+#import pyautogui
 from streamlit.web import cli as stcli
 
 # --- Configuração da Página ---
@@ -55,7 +55,7 @@ def main():
             
             if pid_to_kill:
                 try:
-                    pyautogui.hotkey('ctrl', 'w')
+                    #pyautogui.hotkey('ctrl', 'w')
                     print(f"Encerrando pid: {pid_to_kill}")
                     os.kill(pid_to_kill, signal.SIGTERM)
                     st.warning(f"O aplicativo está sendo encerrado.")
