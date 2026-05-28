@@ -19,8 +19,17 @@ def main():
     # Obtém o PID do processo Streamlit atual.
     current_streamlit_pid = os.getpid() 
     
-    st.title("Dashboard Simples de Análise de Dados 📊")
+    #st.title("Dashboard Simples de Análise de Dados 📊")
+    col1, col2 = st.columns([1, 6])
 
+    # Coluna da imagem
+    with col1:
+        st.image("Logo_Pequena.png", width=80)
+
+    # Coluna do título
+    with col2:
+        st.title("Dashboard Simples de Análise de Dados 📊")
+    
     st.header("1. Upload e Configuração do Arquivo")
 
     # Componente de Upload de Arquivo 
