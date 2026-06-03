@@ -256,7 +256,7 @@ def main():
 
             if (selected_variable_x or selected_variable_lat) and len(data_to_plot) > 0: 
                 try:
-if chart_type == "Barra":
+                    if chart_type == "Barra":
                         plot_data = preparar_dados_plot(data_to_plot, selected_variable_x, selected_group_col)
                         
                         if selected_group_col and selected_group_col != "-- Nenhum --":
