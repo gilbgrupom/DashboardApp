@@ -5,7 +5,6 @@ import io
 import os
 import signal
 import sys
-from streamlit.web import cli as stcli
 
 # Tenta importar o pyautogui de forma segura para não quebrar na nuvem
 try:
@@ -237,7 +236,7 @@ def main():
             # --- Renderização do Gráfico ---
             st.header("4. Visualização") 
 
-            # FUNÇÃO DE PREPARAÇÃO BLINDADA COM LIMPEZA DE TEXTO E UNIFICAÇÃO (CRUCIAL)
+            # FUNÇÃO DE PREPARAÇÃO BLINDADA COM LIMPEZA DE TEXTO E UNIFICAÇÃO
             def preparar_dados_plot(df, col_x, col_group=None):
                 cols_x_reais = [c for c in df.columns if c == col_x or c.startswith(f"{col_x}.")]
                 
@@ -283,12 +282,23 @@ def main():
                             plot_df.columns = [selected_variable_x, selected_group_col, 'Percentual']
                             fig = px.bar(plot_df, x=selected_variable_x, y='Percentual', color=selected_group_col, barmode='group', height=600)
                         else:
-                            # Contagem consolidada (já unificada pela função)
+                            # --- CÁLCULO BASEADO NO TOTAL DE ENTREVISTAS (LINHAS DO ARQUIVO) ---
+                            total_entrevistas = len(data_to_plot)
+                            
                             counts = plot_data[selected_variable_x].value_counts().reset_index()
                             counts.columns = [selected_variable_x, 'Contagem']
-                            counts = counts.sort_values(by='Contagem', ascending=False)
                             
-                            fig = px.bar(counts, x=selected_variable_x, y='Contagem', text='Contagem', height=600)
+                            # Agrupa garantindo soma e unificação perfeita
+                            counts = counts.groupby(selected_variable_x, as_index=False).sum()
+                            
+                            # Calcula o percentual dividindo pelo total real de respondentes
+                            counts['Percentual'] = ((counts['Contagem'] / total_entrevistas) * 100).round(1)
+                            counts = counts.sort_values(by='Percentual', ascending=False)
+                            
+                            # Cria o gráfico usando a nova coluna de Percentual calculada
+                            fig = px.bar(counts, x=selected_variable_x, y='Percentual', 
+                                         text=counts['Percentual'].astype(str) + '%', height=600,
+                                         labels={'Percentual': 'Percentual sobre o Total de Entrevistados (%)'})
                             fig.update_traces(textposition='outside')
                             
                         st.plotly_chart(fig, use_container_width=True)
@@ -308,15 +318,22 @@ def main():
                         st.plotly_chart(fig, use_container_width=True)
 
                     elif chart_type == "Pizza":
+                        # --- CÁLCULO BASEADO NO TOTAL DE ENTREVISTAS NO GRÁFICO DE PIZZA ---
+                        total_entrevistas = len(data_to_plot)
+                        
                         plot_data = preparar_dados_plot(data_to_plot, selected_variable_x)
                         plot_df = plot_data[selected_variable_x].value_counts().reset_index()
                         plot_df.columns = [selected_variable_x, 'count']
                         
-                        # Agrupamento final extra para somar fatias que tenham o mesmo nome limpo
                         plot_df = plot_df.groupby(selected_variable_x, as_index=False).sum()
-                        plot_df = plot_df.sort_values(by='count', ascending=False)
                         
-                        fig = px.pie(plot_df, names=selected_variable_x, values='count', hole=.3, height=600)
+                        # Atribui o percentual real em relação à quantidade de questionários
+                        plot_df['Percentual'] = ((plot_df['count'] / total_entrevistas) * 100).round(1)
+                        plot_df = plot_df.sort_values(by='Percentual', ascending=False)
+                        
+                        # Forçamos o Plotly a mostrar a legenda customizada com o valor real calculado
+                        fig = px.pie(plot_df, names=selected_variable_x, values='Percentual', hole=.3, height=600)
+                        fig.update_traces(textinfo='label+percent', texttemplate='%{label}: %{value}%')
                         st.plotly_chart(fig, use_container_width=True)
 
                     elif chart_type == "Mapa": 
@@ -343,6 +360,7 @@ def main():
 # --- Inicialização Autônoma para Executável (.exe) ou Streamlit Cloud ---
 if __name__ == "__main__":
     if not st.runtime.exists():
+        import streamlit.web.cli as stcli
         sys.argv = ["streamlit", "run", __file__, "--global.developmentMode=false"]
         sys.exit(stcli.main())
     else:
