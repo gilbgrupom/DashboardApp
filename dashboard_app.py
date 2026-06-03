@@ -5,9 +5,15 @@ import io
 import os
 import signal
 import sys
-import pyautogui
 from streamlit.web import cli as stcli
 
+# Tenta importar o pyautogui de forma segura para não quebrar na nuvem
+try:
+    import pyautogui
+    PYAUTOGUI_AVAILABLE = True
+except ModuleNotFoundError:
+    PYAUTOGUI_AVAILABLE = False
+    
 # --- Função para localizar recursos internos do PyInstaller ---
 def resource_path(relative_path):
     """ Retorna o caminho absoluto para o recurso, funcionando no desenvolvimento e no .exe """
