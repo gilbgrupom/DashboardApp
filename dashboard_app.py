@@ -256,7 +256,7 @@ def main():
 
             if (selected_variable_x or selected_variable_lat) and len(data_to_plot) > 0: 
                 try:
-                    if chart_type == "Barra":
+if chart_type == "Barra":
                         plot_data = preparar_dados_plot(data_to_plot, selected_variable_x, selected_group_col)
                         
                         if selected_group_col and selected_group_col != "-- Nenhum --":
@@ -266,7 +266,7 @@ def main():
                             plot_df.columns = [selected_variable_x, selected_group_col, 'Percentual']
                             fig = px.bar(plot_df, x=selected_variable_x, y='Percentual', color=selected_group_col, barmode='group', height=600)
                         else:
-                            # --- CONSOLIDAÇÃO DE MULTIPLAS OPÇÕES (1ª e 2ª Citações juntas) ---
+                            # --- CONSOLIDAÇÃO DE MÚLTIPLAS OPÇÕES ---
                             cols_x_reais = [c for c in data_to_plot.columns if c == selected_variable_x or c.startswith(f"{selected_variable_x}.")]
                             
                             if len(cols_x_reais) > 1:
@@ -274,10 +274,18 @@ def main():
                             else:
                                 series_consolidada = data_to_plot[selected_variable_x]
                             
-                            counts = series_consolidada.value_counts().reset_index()
+                            # --- TRATAMENTO DE TEXTO (Limpeza de Espaços e Padronização) ---
+                            # Convertemos para string, removemos espaços invisíveis nas pontas e padronizamos em MAIÚSCULO
+                            series_limpa = series_consolidada.astype(str).str.strip().str.upper()
+                            
+                            # Remove valores que fiquem vazios, nulos ou strings de erro comuns após a limpeza
+                            series_limpa = series_limpa[~series_limpa.isin(['NAN', 'NONE', '', ' '])]
+                            
+                            # Agora sim, fazemos a contagem exata das categorias únicas
+                            counts = series_limpa.value_counts().reset_index()
                             counts.columns = [selected_variable_x, 'Contagem']
                             
-                            counts[selected_variable_x] = counts[selected_variable_x].astype(str)
+                            # Garante o agrupamento final e ordena do maior para o menor
                             counts = counts.groupby(selected_variable_x, as_index=False).sum()
                             counts = counts.sort_values(by='Contagem', ascending=False)
                             
@@ -285,7 +293,7 @@ def main():
                             fig.update_traces(textposition='outside')
                             
                         st.plotly_chart(fig, use_container_width=True)
-
+    
                     elif chart_type == "Linha":
                         plot_data = preparar_dados_plot(data_to_plot, selected_variable_x)
                         if selected_variable_y == "Contagem":
