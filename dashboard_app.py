@@ -13,7 +13,7 @@ try:
     PYAUTOGUI_AVAILABLE = True
 except ModuleNotFoundError:
     PYAUTOGUI_AVAILABLE = False
-    
+
 # --- Função para localizar recursos internos do PyInstaller ---
 def resource_path(relative_path):
     """ Retorna o caminho absoluto para o recurso, funcionando no desenvolvimento e no .exe """
@@ -82,7 +82,12 @@ def main():
             
             if pid_to_kill:
                 try:
-                    pyautogui.hotkey('ctrl', 'w')
+                    # Só tenta fechar a aba do navegador se o pyautogui existir (ambiente local)
+                    if PYAUTOGUI_AVAILABLE:
+                        pyautogui.hotkey('ctrl', 'w')
+                    else:
+                        print("PyAutoGUI não disponível neste ambiente (Nuvem). pulando fechamento de aba.")
+
                     print(f"Encerrando pid: {pid_to_kill}")
                     os.kill(pid_to_kill, signal.SIGTERM)
                     st.warning(f"O aplicativo está sendo encerrado.")
@@ -232,7 +237,7 @@ def main():
             # --- Renderização do Gráfico ---
             st.header("4. Visualização") 
 
-            # FUNÇÃO DE PREPARAÇÃO BLINDADA CONTRA CONFLITOS DE NOMES DO PANDAS
+            # FUNÇÃO DE PREPARAÇÃO BLINDADA COM LIMPEZA DE TEXTO E UNIFICAÇÃO (CRUCIAL)
             def preparar_dados_plot(df, col_x, col_group=None):
                 cols_x_reais = [c for c in df.columns if c == col_x or c.startswith(f"{col_x}.")]
                 
@@ -240,19 +245,31 @@ def main():
                     cols_g_reais = [c for c in df.columns if c == col_group or c.startswith(f"{col_group}.")]
                     
                     if len(cols_x_reais) == 1 and len(cols_g_reais) == 1:
-                        return df[[col_x, col_group]].dropna()
+                        df_res = df[[col_x, col_group]].dropna().copy()
+                    else:
+                        df_res = df.melt(value_vars=cols_x_reais, var_name='original_x_col', value_name='valores_temporarios')
+                        df_res[col_group] = df[cols_g_reais].bfill(axis=1).iloc[:, 0]
+                        df_res.rename(columns={'valores_temporarios': col_x}, inplace=True)
                     
-                    df_melted = df.melt(value_vars=cols_x_reais, var_name='original_x_col', value_name='valores_temporarios')
-                    df_melted[col_group] = df[cols_g_reais].bfill(axis=1).iloc[:, 0]
-                    df_melted.rename(columns={'valores_temporarios': col_x}, inplace=True)
-                    return df_melted.dropna(subset=[col_x, col_group])
+                    # Limpeza profunda de strings para o Eixo X e para o Grupo
+                    df_res[col_x] = df_res[col_x].astype(str).str.strip().str.upper()
+                    df_res[col_group] = df_res[col_group].astype(str).str.strip().str.upper()
+                    
+                    # Remove termos nulos gerados pela conversão textual
+                    df_res = df_res[~df_res[col_x].isin(['NAN', 'NONE', '', ' '])]
+                    df_res = df_res[~df_res[col_group].isin(['NAN', 'NONE', '', ' '])]
+                    return df_res
                 else:
                     if len(cols_x_reais) == 1:
-                        return df[[col_x]].dropna()
-                        
-                    df_melted = df.melt(value_vars=cols_x_reais, var_name='original_x_col', value_name='valores_temporarios')
-                    df_melted.rename(columns={'valores_temporarios': col_x}, inplace=True)
-                    return df_melted.dropna(subset=[col_x])
+                        df_res = df[[col_x]].dropna().copy()
+                    else:
+                        df_res = df.melt(value_vars=cols_x_reais, var_name='original_x_col', value_name='valores_temporarios')
+                        df_res.rename(columns={'valores_temporarios': col_x}, inplace=True)
+                    
+                    # Limpeza profunda de strings apenas para o Eixo X
+                    df_res[col_x] = df_res[col_x].astype(str).str.strip().str.upper()
+                    df_res = df_res[~df_res[col_x].isin(['NAN', 'NONE', '', ' '])]
+                    return df_res
 
             if (selected_variable_x or selected_variable_lat) and len(data_to_plot) > 0: 
                 try:
@@ -266,34 +283,16 @@ def main():
                             plot_df.columns = [selected_variable_x, selected_group_col, 'Percentual']
                             fig = px.bar(plot_df, x=selected_variable_x, y='Percentual', color=selected_group_col, barmode='group', height=600)
                         else:
-                            # --- CONSOLIDAÇÃO DE MÚLTIPLAS OPÇÕES ---
-                            cols_x_reais = [c for c in data_to_plot.columns if c == selected_variable_x or c.startswith(f"{selected_variable_x}.")]
-                            
-                            if len(cols_x_reais) > 1:
-                                series_consolidada = data_to_plot[cols_x_reais].stack()
-                            else:
-                                series_consolidada = data_to_plot[selected_variable_x]
-                            
-                            # --- TRATAMENTO DE TEXTO (Limpeza de Espaços e Padronização) ---
-                            # Convertemos para string, removemos espaços invisíveis nas pontas e padronizamos em MAIÚSCULO
-                            series_limpa = series_consolidada.astype(str).str.strip().str.upper()
-                            
-                            # Remove valores que fiquem vazios, nulos ou strings de erro comuns após a limpeza
-                            series_limpa = series_limpa[~series_limpa.isin(['NAN', 'NONE', '', ' '])]
-                            
-                            # Agora sim, fazemos a contagem exata das categorias únicas
-                            counts = series_limpa.value_counts().reset_index()
+                            # Contagem consolidada (já unificada pela função)
+                            counts = plot_data[selected_variable_x].value_counts().reset_index()
                             counts.columns = [selected_variable_x, 'Contagem']
-                            
-                            # Garante o agrupamento final e ordena do maior para o menor
-                            counts = counts.groupby(selected_variable_x, as_index=False).sum()
                             counts = counts.sort_values(by='Contagem', ascending=False)
                             
                             fig = px.bar(counts, x=selected_variable_x, y='Contagem', text='Contagem', height=600)
                             fig.update_traces(textposition='outside')
                             
                         st.plotly_chart(fig, use_container_width=True)
-    
+
                     elif chart_type == "Linha":
                         plot_data = preparar_dados_plot(data_to_plot, selected_variable_x)
                         if selected_variable_y == "Contagem":
@@ -312,7 +311,12 @@ def main():
                         plot_data = preparar_dados_plot(data_to_plot, selected_variable_x)
                         plot_df = plot_data[selected_variable_x].value_counts().reset_index()
                         plot_df.columns = [selected_variable_x, 'count']
-                        fig = px.pie(plot_df, names=selected_variable_x, values='count', hole=.3)
+                        
+                        # Agrupamento final extra para somar fatias que tenham o mesmo nome limpo
+                        plot_df = plot_df.groupby(selected_variable_x, as_index=False).sum()
+                        plot_df = plot_df.sort_values(by='count', ascending=False)
+                        
+                        fig = px.pie(plot_df, names=selected_variable_x, values='count', hole=.3, height=600)
                         st.plotly_chart(fig, use_container_width=True)
 
                     elif chart_type == "Mapa": 
@@ -336,7 +340,7 @@ def main():
     else:
         st.info("Aguardando upload do arquivo CSV/TXT.")
 
-# --- Inicialização Autônoma para Executável (.exe) ---
+# --- Inicialização Autônoma para Executável (.exe) ou Streamlit Cloud ---
 if __name__ == "__main__":
     if not st.runtime.exists():
         sys.argv = ["streamlit", "run", __file__, "--global.developmentMode=false"]
