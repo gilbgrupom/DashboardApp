@@ -5,8 +5,19 @@ import io
 import os
 import signal
 import sys
-#import pyautogui
+import pyautogui
 from streamlit.web import cli as stcli
+
+# --- Função para localizar recursos internos do PyInstaller ---
+def resource_path(relative_path):
+    """ Retorna o caminho absoluto para o recurso, funcionando no desenvolvimento e no .exe """
+    try:
+        # O PyInstaller cria uma pasta temporária e guarda o caminho em _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
 
 # --- Configuração da Página ---
 st.set_page_config(
@@ -18,18 +29,19 @@ st.set_page_config(
 def main():
     # Obtém o PID do processo Streamlit atual.
     current_streamlit_pid = os.getpid() 
-    
-    #st.title("Dashboard Simples de Análise de Dados 📊")
+
     col1, col2 = st.columns([1, 6])
 
-    # Coluna da imagem
+    # Coluna da imagem (Logo)
     with col1:
-        st.image("Logo_Pequena_Cinza.png", width=160)
+        caminho_logo = resource_path("Logo_Pequena_Cinza.png")
+        st.image(caminho_logo, width=160)
 
     # Coluna do título
     with col2:
         st.title("Dashboard Simples de Análise de Dados 📊")
-    
+
+        
     st.header("1. Upload e Configuração do Arquivo")
 
     # Componente de Upload de Arquivo 
@@ -64,7 +76,7 @@ def main():
             
             if pid_to_kill:
                 try:
-                    #pyautogui.hotkey('ctrl', 'w')
+                    pyautogui.hotkey('ctrl', 'w')
                     print(f"Encerrando pid: {pid_to_kill}")
                     os.kill(pid_to_kill, signal.SIGTERM)
                     st.warning(f"O aplicativo está sendo encerrado.")
@@ -105,13 +117,11 @@ def main():
             # ----------------------------------------------------------------------------------
             # MAPEAMENTO DE COLUNAS AGRUPADAS (MÚLTIPLA ESCOLHA)
             # ----------------------------------------------------------------------------------
-            # Identifica quais são os nomes "raiz" originais limpando os sufixos .1, .2, etc.
             raw_cols = []
             for col in data.columns:
                 base_name = col.split('.')[0] if '.' in col and col.split('.')[-1].isdigit() else col
                 raw_cols.append(base_name)
             
-            # Criamos uma lista única de colunas disponíveis para o usuário escolher
             unique_display_cols = sorted(list(set(raw_cols)))
 
             st.dataframe(data.head()) 
@@ -133,10 +143,8 @@ def main():
                 )
             
             if filter_col != "-- Nenhum Filtro --":
-                # Descobre quais colunas reais pertencem ao grupo selecionado (ex: REJEICAO_PRES, REJEICAO_PRES.1...)
                 target_cols = [c for c in data.columns if c == filter_col or c.startswith(f"{filter_col}.")]
                 
-                # Se for apenas uma coluna normal
                 if len(target_cols) == 1:
                     col_type = df_filtered[filter_col].dtype
                     if pd.api.types.is_numeric_dtype(col_type):
@@ -163,17 +171,14 @@ def main():
                             search_term = st.text_input("Digite o termo (Contém):")
                             if search_term: df_filtered = df_filtered[df_filtered[filter_col].astype(str).str.contains(search_term, case=False, na=False)]
                 
-                # Se for uma variável de múltipla escolha aglomerada (Ex: REJEICAO_PRES)
                 else:
                     with col_f2:
                         op = st.selectbox("Operação para Múltiplas:", ["Contém a opção", "Não contém a opção"])
                     with col_f3:
-                        # Une os valores únicos de todas as subcolunas para dar as opções
                         unique_vals = pd.unique(df_filtered[target_cols].values.ravel())
                         unique_vals = sorted([str(x) for x in unique_vals if pd.notna(x)])
                         val = st.selectbox("Selecione a Opção de Rejeição:", options=unique_vals)
                         
-                        # Verifica em qualquer uma das colunas se o valor existe
                         condition = df_filtered[target_cols].isin([val]).any(axis=1)
                         df_filtered = df_filtered[condition] if op == "Contém a opção" else df_filtered[~condition]
 
@@ -231,7 +236,6 @@ def main():
                     if len(cols_x_reais) == 1 and len(cols_g_reais) == 1:
                         return df[[col_x, col_group]].dropna()
                     
-                    # Usa 'valores_temporarios' para evitar colisão com o nome da coluna original
                     df_melted = df.melt(value_vars=cols_x_reais, var_name='original_x_col', value_name='valores_temporarios')
                     df_melted[col_group] = df[cols_g_reais].bfill(axis=1).iloc[:, 0]
                     df_melted.rename(columns={'valores_temporarios': col_x}, inplace=True)
@@ -240,7 +244,6 @@ def main():
                     if len(cols_x_reais) == 1:
                         return df[[col_x]].dropna()
                         
-                    # Usa 'valores_temporarios' para evitar colisão com o nome da coluna original
                     df_melted = df.melt(value_vars=cols_x_reais, var_name='original_x_col', value_name='valores_temporarios')
                     df_melted.rename(columns={'valores_temporarios': col_x}, inplace=True)
                     return df_melted.dropna(subset=[col_x])
@@ -257,9 +260,23 @@ def main():
                             plot_df.columns = [selected_variable_x, selected_group_col, 'Percentual']
                             fig = px.bar(plot_df, x=selected_variable_x, y='Percentual', color=selected_group_col, barmode='group', height=600)
                         else:
-                            counts = plot_data[selected_variable_x].value_counts().reset_index()
+                            # --- CONSOLIDAÇÃO DE MULTIPLAS OPÇÕES (1ª e 2ª Citações juntas) ---
+                            cols_x_reais = [c for c in data_to_plot.columns if c == selected_variable_x or c.startswith(f"{selected_variable_x}.")]
+                            
+                            if len(cols_x_reais) > 1:
+                                series_consolidada = data_to_plot[cols_x_reais].stack()
+                            else:
+                                series_consolidada = data_to_plot[selected_variable_x]
+                            
+                            counts = series_consolidada.value_counts().reset_index()
                             counts.columns = [selected_variable_x, 'Contagem']
-                            fig = px.bar(counts, x=selected_variable_x, y='Contagem', height=600)
+                            
+                            counts[selected_variable_x] = counts[selected_variable_x].astype(str)
+                            counts = counts.groupby(selected_variable_x, as_index=False).sum()
+                            counts = counts.sort_values(by='Contagem', ascending=False)
+                            
+                            fig = px.bar(counts, x=selected_variable_x, y='Contagem', text='Contagem', height=600)
+                            fig.update_traces(textposition='outside')
                             
                         st.plotly_chart(fig, use_container_width=True)
 
