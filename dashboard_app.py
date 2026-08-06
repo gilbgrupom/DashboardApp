@@ -106,24 +106,45 @@ def main():
             
             st.success(f"Arquivo carregado com sucesso! Codificação: **{encoding}**")
             
-            # --- 1.5. Pré-processamento: Latitude/Longitude  ---
+# --- 1.5. Pré-processamento: Latitude/Longitude (Validação Numérica Real) ---
             col_com_separador = None
-            for col in data.columns:
-                if data[col].astype(str).str.contains('\*').any():
-                    col_com_separador = col
-                    break
             
+            for col in data.columns:
+                # 1. Ignora parênteses com asterisco '(*)'
+                s_limpo = data[col].astype(str).str.replace('(*)', '', regex=False)
+                
+                # 2. Verifica se existe o caractere '*' isolado na coluna
+                if s_limpo.str.contains('*', regex=False).any():
+                    # Pega uma amostra válida e tenta dividir no '*'
+                    amostra = s_limpo.dropna().iloc[0] if not s_limpo.dropna().empty else ""
+                    partes = amostra.split('*')
+                    
+                    # 3. VALIDAÇÃO REAL: Só considera se tiver 2 partes e AMBAS forem números!
+                    if len(partes) == 2:
+                        try:
+                            float(partes[0].strip())
+                            float(partes[1].strip())
+                            col_com_separador = col  # É uma coordenada real!
+                            break
+                        except ValueError:
+                            # Não são números (é texto normal com asterisco), ignora esta coluna
+                            continue
+
             if col_com_separador:
                 st.info(f"📍 Coordenadas encontradas em **'{col_com_separador}'**.")
                 try:
-                    data[['latitude_processada', 'longitude_processada']] = data[col_com_separador].astype(str).str.split('\*', expand=True)
-                    data['latitude_processada'] = pd.to_numeric(data['latitude_processada'], errors='coerce')
-                    data['longitude_processada'] = pd.to_numeric(data['longitude_processada'], errors='coerce')
-                    data.dropna(subset=['latitude_processada', 'longitude_processada'], inplace=True)
-                    st.success("✅ Coordenadas processadas!")
+                    # Faz o split e converte para numérico
+                    partes_df = data[col_com_separador].astype(str).str.split('*', regex=False, expand=True)
+                    
+                    if partes_df.shape[1] >= 2:
+                        data['latitude_processada'] = pd.to_numeric(partes_df[0], errors='coerce')
+                        data['longitude_processada'] = pd.to_numeric(partes_df[1], errors='coerce')
+                        
+                        # Mantém os dados e informa se processou GPS
+                        st.success("✅ Coordenadas processadas com sucesso!")
                 except Exception as e:
-                    st.warning(f"Erro ao processar coordenadas: {e}")
-
+                    st.warning(f"Aviso ao processar coordenadas: {e}")
+                    
             # ----------------------------------------------------------------------------------
             # MAPEAMENTO DE COLUNAS AGRUPADAS (MÚLTIPLA ESCOLHA)
             # ----------------------------------------------------------------------------------
