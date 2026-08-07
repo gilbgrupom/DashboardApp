@@ -6,8 +6,9 @@ import io
 import os
 import signal
 import sys
+import urllib.parse
 
-# Tenta importar o pyautogui de forma segura para não quebrar na nuvem
+# --- Tenta importar o pyautogui de forma segura para não quebrar na nuvem ---
 try:
     import pyautogui
     PYAUTOGUI_AVAILABLE = True
@@ -48,7 +49,7 @@ def main():
 
     # --- Captura da URL via Parâmetros query_params ---
     query_params = st.query_params
-    api_url = query_params.get("api_data", None)
+    raw_api_url = query_params.get("api_data", None)
 
     # --- Sidebar para Ações de Sistema ---
     st.sidebar.header("Painel de Controle")
@@ -64,27 +65,35 @@ def main():
     # --- Carregamento Dinâmico de Dados ---
     data = None
 
-    if api_url:
+    if raw_api_url:
+        # Decodifica a URL para corrigir caracteres especiais (%3A, %2F, %3F, %3D)
+        api_url = urllib.parse.unquote(raw_api_url)
+
         with st.spinner("Carregando registros do banco de dados (Parcial Válido e Completo)..."):
             try:
                 headers = {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                     'Accept': 'application/json, text/plain, */*'
                 }
-                response = requests.get(api_url, headers=headers, timeout=15)
+                response = requests.get(api_url, headers=headers, timeout=20)
+                
                 if response.status_code == 200:
                     json_res = response.json()
+                    
                     if "data" in json_res and len(json_res["data"]) > 0:
                         data = pd.DataFrame(json_res["data"])
-                        st.success(f"✅ **{len(data)}** registros carregados com sucesso!")
+                        st.success(f"✔️ **{len(data)}** registros carregados com sucesso!")
+                    elif "error" in json_res:
+                        st.error(f"Erro retornado pelo servidor backend: {json_res['error']}")
                     else:
                         st.warning("Nenhum registro encontrado com os status 'COMPLETO' ou 'PARCIAL VÁLIDO'.")
                 else:
                     st.error(f"Erro na requisição HTTP: Código {response.status_code}")
+                    st.code(f"URL consultada: {api_url}")
             except Exception as e:
                 st.error(f"Erro ao conectar com a API: {e}")
     else:
-        st.info("💡 **Aguardando dados...** Acesse este aplicativo através do botão 'Dashboard' do painel para visualizar a análise.")
+        st.info("ℹ️ **Aguardando dados...** Acesse este aplicativo através do botão 'Dashboard' do painel para visualizar a análise.")
 
     # --- Processamento dos Dados ---
     if data is not None and not data.empty:
@@ -313,4 +322,3 @@ if __name__ == "__main__":
         sys.exit(stcli.main())
     else:
         main()
-
